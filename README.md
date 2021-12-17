@@ -9,6 +9,10 @@ pip install -r requirements.txt
 
 ## Usage:
 ```
+usage: python3 NFTGenV1.py [-h] -i INPUT_FOLDER_NAME -o OUTPUT_FOLDER_NAME [-p IMAGE_PREFIX]
+                   [-a ATTRIBUTES [ATTRIBUTES ...]]
+```
+```
 required arguments: 
 
 -i INPUT_FOLDER_NAME, --input-folder-name INPUT_FOLDER_NAME
