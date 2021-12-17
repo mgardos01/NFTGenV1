@@ -35,7 +35,7 @@ optional arguments:
 
 ## On Attributes:
 This program classifies each image file with attributes that are written out in its filename. Each generated image will use *at most* a single source image for each unique attribute (i.e. no generated images use two source images that share an attribute).
--   All attributes should be written with characters `[A-Z-]` between underscores.
+-   All attributes should be written with characters `[A-Z-]` *between* underscores.
     > For example, the filename
     >```
     >prefix_FOO_FOO-BAR_0000.png
