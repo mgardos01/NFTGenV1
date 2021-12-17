@@ -17,7 +17,7 @@ class Piece():
 
 class Author():
     def __init__(self):
-        self.name = ""
+        self.name = "Max Gardos"
 
 
 def get_valid_filename(s):
