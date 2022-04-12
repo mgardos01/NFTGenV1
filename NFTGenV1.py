@@ -1,10 +1,13 @@
 from PIL import Image
-import argparse
 from tqdm import tqdm
 from collections import defaultdict
+from multiprocessing import Pool
+from functools import partial
 import os
 import itertools
 import re
+import argparse
+import time
 
 
 class Piece():
@@ -35,7 +38,8 @@ def findPieceType(filename):
     @return: a list of each type of that file.
     """
     pieceTypes = re.findall(
-        r'(?<=_)[A-Z-]*(?=_)', filename)  # (?<=_)[A-Z_]*(?=_) matches all caps between two underscores
+        r'(?<=_)[A-Z-]*(?=_)',
+        filename)  # (?<=_)[A-Z_]*(?=_) matches all caps between two underscores
     if not pieceTypes:
         return []  # ["NONE_TYPE"]
     else:
@@ -46,7 +50,7 @@ def displayAttributes(sources_folder_path, required_types):
     """ Displays a list of attributes and indicates which will always be included in the batch image set
     @param sources_folder_path: the folder path to the source images
     @param required_types: a list of attributes that every batch generated image will share
-    @return: void. 
+    @return: void.
     """
     attributes = []
     for file in os.listdir(sources_folder_path):
@@ -87,7 +91,7 @@ def openingMessage():
     ██╔██╗ ██║█████╗     ██║   ██║  ███╗█████╗  ██╔██╗ ██║    ██║   ██║╚██║
     ██║╚██╗██║██╔══╝     ██║   ██║   ██║██╔══╝  ██║╚██╗██║    ╚██╗ ██╔╝ ██║
     ██║ ╚████║██║        ██║   ╚██████╔╝███████╗██║ ╚████║     ╚████╔╝  ██║
-    ╚═╝  ╚═══╝╚═╝        ╚═╝    ╚═════╝ ╚══════╝╚═╝  ╚═══╝      ╚═══╝   ╚═╝                                 
+    ╚═╝  ╚═══╝╚═╝        ╚═╝    ╚═════╝ ╚══════╝╚═╝  ╚═══╝      ╚═══╝   ╚═╝
     """)
 
 
@@ -101,7 +105,8 @@ def getSourceFolder(foldername):
     if not os.path.isdir(sources_folder_path):
         raise Exception(
             f"ERROR: There is not a folder called /{sources_folder_name} in current directory.")
-    if not any('BACKGROUND' in filename for filename in os.listdir(sources_folder_path)):
+    if not any('BACKGROUND' in filename for filename in os.listdir(
+            sources_folder_path)):
         raise Exception(
             f"ERROR: There is no explicitly typed BACKGROUND image.")
     return sources_folder_name, sources_folder_path
@@ -133,7 +138,7 @@ def getImagePrefix(prefix):
 
 
 def populateSourcesAndBackground(sources_folder_path):
-    """ From the source folder path, creates a Piece from the background and a list of Pieces from the sources. 
+    """ From the source folder path, creates a Piece from the background and a list of Pieces from the sources.
     @param sources_folder_path: the folder path to the folder holding the source image files.
     @return: the background Piece and a list of source Pieces.
     """
@@ -149,7 +154,7 @@ def populateSourcesAndBackground(sources_folder_path):
 
 
 def sourcesToValidCombinations(sources):
-    """ From a list of source Pieces, creates a list of tuples of every combination of those Pieces, then returns a filtered list of them. 
+    """ From a list of source Pieces, creates a list of tuples of every combination of those Pieces, then returns a filtered list of them.
     @param sources: A list of tuples of source Pieces.
     @return: A filtered list of tuples of source Pieces.
     """
@@ -162,7 +167,7 @@ def sourcesToValidCombinations(sources):
 
 
 def filterValidCombinations(unfiltered_combinations):
-    """ From a list of tuples of Pieces, returns a list of those tuples whose members have no piece types in common. 
+    """ From a list of tuples of Pieces, returns a list of those tuples whose members have no piece types in common.
     @param unfiltered_combinations: An list of tuples of Pieces.
     @return: A modified list of tuples of Pieces.
     """
@@ -173,7 +178,8 @@ def filterValidCombinations(unfiltered_combinations):
         for piece in combination:
             piece_type_expanded = [
                 item for sublist in pieceTypeDict.values() for item in sublist]
-            if not any(piece_type for piece_type in piece.pieceType if piece_type in piece_type_expanded):
+            if not any(
+                    piece_type for piece_type in piece.pieceType if piece_type in piece_type_expanded):
                 pieceTypeDict[piece] = piece.pieceType
             else:
                 dupfound = True
@@ -183,7 +189,7 @@ def filterValidCombinations(unfiltered_combinations):
 
 
 def filterRequiredTypes(sources, required_types):
-    """ From a list of tuples of Pieces, returns a list of those tuples whose members have no piece types in common. 
+    """ From a list of tuples of Pieces, returns a list of those tuples whose members have no piece types in common.
     @param sources: An list of tuples of Pieces.
     @param required_types: a list of the types to use as the filter
     @return: A modified list of tuples of Pieces.
@@ -199,22 +205,41 @@ def filterRequiredTypes(sources, required_types):
     return image_combinations
 
 
-def batchImageProcess(image_combinations, background, destination_folder_path, image_prefix):
-    """ Saves an image from each combination of Pieces into a destination folder. 
+def batchImageProcess(
+        image_combinations,
+        background,
+        destination_folder_path,
+        image_prefix):
+    """ Saves an image from each combination of Pieces into a destination folder.
     @param image_combinations: A list of tuples of each combination of Pieces to be saved to an image.
-    @param background: the background for every image to be saved. 
+    @param background: the background for every image to be saved.
     @param destination_folder_path: the destination folder path for the images to be saved to.
     @param image_prefix: the prefix for each image to be saved with.
     @return: void.
     """
     print("Generating images...")
-    for index, comb in enumerate(tqdm(image_combinations)):
-        background_copy = background.image.copy()
-        for item in comb:
-            item.image.convert("RGBA")
-            background_copy.paste(item.image, mask=item.image)
-        background_copy.save(os.path.join(
-            destination_folder_path, f"{image_prefix}_{index}.png"))
+    enum = range(len(image_combinations))
+    with Pool() as p:
+        p.starmap(batchImageParallel,
+                  zip(image_combinations,
+                      enum,
+                      itertools.repeat(background),
+                      itertools.repeat(destination_folder_path),
+                      itertools.repeat(image_prefix)))
+
+
+def batchImageParallel(
+        comb,
+        index,
+        background,
+        destination_folder_path,
+        image_prefix):
+    background_copy = background.image.copy()
+    for item in tqdm(comb, desc=f"Processing {image_prefix}_{index}..."):
+        item.image.convert("RGBA")
+        background_copy.paste(item.image, mask=item.image)
+    background_copy.save(os.path.join(
+        destination_folder_path, f"{image_prefix}_{index}.png"))
 
 
 def main():
@@ -235,19 +260,33 @@ def main():
     image_combinations = filterRequiredTypes(
         sourcesToValidCombinations(sources), required_types)
 
+    start = time.perf_counter()
     batchImageProcess(image_combinations, background,
                       destination_folder_path, image_prefix)
+    print(f"That took {time.perf_counter() - start} seconds!")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Batch image processor.")
-    parser.add_argument("-i", "--input-folder-name",
-                        help="Name of input (source) folder in current directory", required=True)
-    parser.add_argument("-o", "--output-folder-name",
-                        help="Name of output folder in current directory", required=True)
-    parser.add_argument("-p", "--image-prefix",
-                        help="Name of the prefix for each batch generated image (default: img)", default="img")
     parser.add_argument(
-        "-a", "--attributes", help="List the attributes that you want every batch-generated image to share", nargs="+")
+        "-i",
+        "--input-folder-name",
+        help="Name of input (source) folder in current directory",
+        required=True)
+    parser.add_argument(
+        "-o",
+        "--output-folder-name",
+        help="Name of output folder in current directory",
+        required=True)
+    parser.add_argument(
+        "-p",
+        "--image-prefix",
+        help="Name of the prefix for each batch generated image (default: img)",
+        default="img")
+    parser.add_argument(
+        "-a",
+        "--attributes",
+        help="List the attributes that you want every batch-generated image to share",
+        nargs="+")
     args = parser.parse_args()
     main()
